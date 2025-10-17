@@ -1,0 +1,48 @@
+name: derso_app
+description: "Aplicativo Flutter para gerenciamento de escalas de serviço policial (DERSO - PM RO)."
+publish_to: "none"
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.9.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # Interface moderna e Material 3
+  cupertino_icons: ^1.0.8
+  google_fonts: ^6.3.2
+
+  # Gerenciamento de estado
+  provider: ^6.1.5
+
+  # Banco de dados local
+  sqflite: ^2.4.2
+  path_provider: ^2.1.5
+
+  # Calendário interativo
+  table_calendar: ^3.2.0
+
+  # Gráficos para dashboard
+  fl_chart: ^1.1.1
+
+  # Notificações locais
+  flutter_local_notifications: ^19.4.2
+  timezone: ^0.10.1
+
+  # Internacionalização e formatação de datas
+  intl: ^0.20.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
+  uses-material-design: true
+
+  # Crie esta pasta mesmo que vazia (necessária se quiser usar ícones ou imagens)
+  assets:
+    - assets/
