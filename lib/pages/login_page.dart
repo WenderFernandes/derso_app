@@ -6,9 +6,7 @@ import '../widgets/gradient_header.dart';
 import 'register_page.dart';
 import 'home_page.dart';
 
-/// Tela de login onde o policial insere o e‑mail e a senha para acessar a
-/// aplicação. Inclui micro‑interações através de animações sutis no botão de
-/// login e feedback visual em caso de erro.
+/// Tela de login onde o policial insere a matrícula e a senha para acessar.
 class LoginPage extends StatefulWidget {
   const LoginPage({Key? key}) : super(key: key);
 
@@ -18,10 +16,17 @@ class LoginPage extends StatefulWidget {
 
 class _LoginPageState extends State<LoginPage> {
   final _formKey = GlobalKey<FormState>();
-  final _emailController = TextEditingController();
+  final _matriculaController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _isLoading = false;
   String? _errorMessage;
+
+  @override
+  void dispose() {
+    _matriculaController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -47,8 +52,7 @@ class _LoginPageState extends State<LoginPage> {
                         ),
                         child: Row(
                           children: [
-                            Icon(Icons.error,
-                                color: theme.colorScheme.error),
+                            Icon(Icons.error, color: theme.colorScheme.error),
                             const SizedBox(width: 8),
                             Expanded(
                               child: Text(
@@ -62,15 +66,15 @@ class _LoginPageState extends State<LoginPage> {
                       const SizedBox(height: 16),
                     ],
                     TextFormField(
-                      controller: _emailController,
-                      keyboardType: TextInputType.emailAddress,
+                      controller: _matriculaController,
+                      keyboardType: TextInputType.text,
                       decoration: const InputDecoration(
-                        labelText: 'E-mail',
-                        prefixIcon: Icon(Icons.email),
+                        labelText: 'Matrícula',
+                        prefixIcon: Icon(Icons.badge),
                       ),
                       validator: (value) {
                         if (value == null || value.isEmpty) {
-                          return 'Informe o e-mail';
+                          return 'Informe a matrícula';
                         }
                         return null;
                       },
@@ -95,41 +99,10 @@ class _LoginPageState extends State<LoginPage> {
                       child: AnimatedContainer(
                         duration: const Duration(milliseconds: 200),
                         curve: Curves.easeInOut,
-                        width: _isLoading ? 56 : double.infinity,
+                        width: _isLoading ? 56 : 300,
                         height: 56,
                         child: ElevatedButton(
-                          onPressed: _isLoading
-                              ? null
-                              : () async {
-                                  if (_formKey.currentState!.validate()) {
-                                    setState(() {
-                                      _isLoading = true;
-                                      _errorMessage = null;
-                                    });
-                                    final userProvider =
-                                        context.read<UserProvider>();
-                                    final success = await userProvider.login(
-                                      _emailController.text.trim(),
-                                      _passwordController.text.trim(),
-                                    );
-                                    if (success) {
-                                      if (!mounted) return;
-                                      Navigator.of(context).pushReplacement(
-                                        MaterialPageRoute(
-                                          builder: (_) => const HomePage(),
-                                        ),
-                                      );
-                                    } else {
-                                      setState(() {
-                                        _errorMessage =
-                                            'E-mail ou senha inválidos.';
-                                      });
-                                    }
-                                    setState(() {
-                                      _isLoading = false;
-                                    });
-                                  }
-                                },
+                          onPressed: _isLoading ? null : _handleLogin,
                           style: ElevatedButton.styleFrom(
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
@@ -171,5 +144,37 @@ class _LoginPageState extends State<LoginPage> {
         ),
       ),
     );
+  }
+
+  Future<void> _handleLogin() async {
+    if (_formKey.currentState!.validate()) {
+      setState(() {
+        _isLoading = true;
+        _errorMessage = null;
+      });
+
+      final userProvider = context.read<UserProvider>();
+      final success = await userProvider.login(
+        _matriculaController.text.trim(),
+        _passwordController.text.trim(),
+      );
+
+      if (success) {
+        if (!mounted) return;
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(
+            builder: (_) => const HomePage(),
+          ),
+        );
+      } else {
+        setState(() {
+          _errorMessage = 'Matrícula ou senha inválidos.';
+        });
+      }
+
+      setState(() {
+        _isLoading = false;
+      });
+    }
   }
 }

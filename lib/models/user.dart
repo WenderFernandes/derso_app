@@ -18,7 +18,7 @@ class User {
     required this.password,
   });
 
-  // Converte o usuário em um mapa para ser salvo no banco de dados SQLite.
+  /// Converte o usuário em um mapa para ser salvo no banco de dados SQLite.
   Map<String, dynamic> toMap() {
     return {
       'id': id,
@@ -31,7 +31,7 @@ class User {
     };
   }
 
-  // Cria uma instância de User a partir de um mapa retornado pelo banco.
+  /// Cria uma instância de User a partir de um mapa retornado pelo banco.
   factory User.fromMap(Map<String, dynamic> map) {
     return User(
       id: map['id'] as int?,
@@ -41,6 +41,27 @@ class User {
       cpf: map['cpf'] as String,
       email: map['email'] as String,
       password: map['password'] as String,
+    );
+  }
+
+  /// Permite criar uma nova cópia do objeto User alterando apenas alguns campos.
+  User copyWith({
+    int? id,
+    String? name,
+    String? nickName,
+    String? matricula,
+    String? cpf,
+    String? email,
+    String? password,
+  }) {
+    return User(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      nickName: nickName ?? this.nickName,
+      matricula: matricula ?? this.matricula,
+      cpf: cpf ?? this.cpf,
+      email: email ?? this.email,
+      password: password ?? this.password,
     );
   }
 }

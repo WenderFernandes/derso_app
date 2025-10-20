@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import 'package:timezone/timezone.dart' as tz;
-import 'package:timezone/data/latest.dart' as tz;
 
 import '../models/service.dart';
 import '../providers/service_provider.dart';
@@ -14,9 +13,6 @@ import 'dashboard_page.dart';
 import 'profile_page.dart';
 import 'service_form_page.dart';
 
-/// Tela principal após o login. Possui navegação por abas para Início,
-/// Calendário, Dashboard e Perfil. Um botão flutuante permite o cadastro de
-/// novos serviços.
 class HomePage extends StatefulWidget {
   const HomePage({Key? key}) : super(key: key);
 
@@ -26,13 +22,10 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   int _currentIndex = 0;
-  late final PageController _pageController;
 
   @override
   void initState() {
     super.initState();
-    _pageController = PageController();
-    // Carrega os serviços do usuário atual assim que o widget é criado.
     final userProvider = context.read<UserProvider>();
     final serviceProvider = context.read<ServiceProvider>();
     if (userProvider.user != null) {
@@ -41,98 +34,80 @@ class _HomePageState extends State<HomePage> {
   }
 
   @override
-  void dispose() {
-    _pageController.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final serviceProvider = context.watch<ServiceProvider>();
     final userProvider = context.watch<UserProvider>();
 
-    // Cria uma lista de serviços do dia atual para exibir no painel inicial.
-    final today = DateTime.now();
-    final todayServices = serviceProvider.services
-        .where((s) => s.date.year == today.year &&
-            s.date.month == today.month &&
-            s.date.day == today.day)
-        .toList();
-
     return Scaffold(
-      appBar: null,
       body: IndexedStack(
         index: _currentIndex,
         children: [
-          _buildHomeTab(context, todayServices),
-          CalendarPage(),
+          _HomeTab(services: serviceProvider.services),
+          const CalendarPage(),
           DashboardPage(services: serviceProvider.services),
           ProfilePage(user: userProvider.user!),
         ],
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: () async {
-          // Abrir formulário para novo serviço
-          final newService = await Navigator.of(context).push<Service?>(
-            MaterialPageRoute(
-              builder: (_) => ServiceFormPage(),
-            ),
-          );
-          if (newService != null) {
-            // Adiciona serviço e agenda notificação
-            await serviceProvider.addService(newService);
-            final notifService = NotificationService();
-            await notifService.scheduleNotification(
-              id: newService.id ?? DateTime.now().millisecondsSinceEpoch,
-              scheduledDate: tz.TZDateTime.from(
-                newService.date.subtract(
-                  const Duration(hours: 1),
-                ),
-                tz.local,
-              ),
-              title: 'Serviço DERSO',
-              body:
-                  'Você possui um serviço ${newService.period} em ${DateFormat('dd/MM/yyyy').format(newService.date)} às ${newService.startTime}.',
-            );
-          }
-        },
+        onPressed: () => _addNewService(context),
         tooltip: 'Novo serviço',
         child: const Icon(Icons.add),
       ),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentIndex,
-        onTap: (index) {
-          setState(() {
-            _currentIndex = index;
-          });
-        },
+        onTap: (index) => setState(() => _currentIndex = index),
+        type: BottomNavigationBarType.fixed,
         items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.home),
-            label: 'Início',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.calendar_month),
-            label: 'Calendário',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.bar_chart),
-            label: 'Dashboard',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.person),
-            label: 'Perfil',
-          ),
+          BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Início'),
+          BottomNavigationBarItem(icon: Icon(Icons.calendar_month), label: 'Calendário'),
+          BottomNavigationBarItem(icon: Icon(Icons.bar_chart), label: 'Dashboard'),
+          BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Perfil'),
         ],
       ),
     );
   }
 
-  /// Constrói o painel inicial, exibindo um resumo dos serviços do dia e
-  /// estatísticas rápidas.
-  Widget _buildHomeTab(BuildContext context, List<Service> todayServices) {
+  Future<void> _addNewService(BuildContext context) async {
+    final newService = await Navigator.of(context).push<Service?>(
+      MaterialPageRoute(builder: (_) => const ServiceFormPage()),
+    );
+
+    if (newService != null) {
+      final serviceProvider = context.read<ServiceProvider>();
+      final serviceId = await serviceProvider.addService(newService);
+
+      final notifService = NotificationService();
+      final notifTime = newService.date.subtract(const Duration(hours: 1));
+      
+      await notifService.scheduleNotification(
+        id: serviceId,
+        scheduledDate: tz.TZDateTime.from(notifTime, tz.local),
+        title: 'Serviço DERSO',
+        body: 'Você possui um serviço ${newService.period} em ${DateFormat('dd/MM/yyyy').format(newService.date)} às ${newService.startTime}.',
+      );
+    }
+  }
+}
+
+class _HomeTab extends StatefulWidget {
+  final List<Service> services;
+  const _HomeTab({required this.services});
+
+  @override
+  State<_HomeTab> createState() => _HomeTabState();
+}
+
+class _HomeTabState extends State<_HomeTab> {
+  String _filterType = 'hoje';
+  DateTime _selectedDate = DateTime.now();
+  DateTime? _startDate;
+  DateTime? _endDate;
+
+  @override
+  Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final filteredServices = _getFilteredServices();
+
     return SingleChildScrollView(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -143,22 +118,16 @@ class _HomePageState extends State<HomePage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'Serviços de hoje',
-                  style: theme.textTheme.titleMedium,
-                ),
+                _buildFilterButtons(theme),
                 const SizedBox(height: 12),
-                if (todayServices.isEmpty)
-                  Text(
-                    'Nenhum serviço agendado para hoje.',
-                    style: theme.textTheme.bodyMedium,
-                  )
+                if (_filterType == 'periodo') _buildPeriodSelector(theme),
+                const SizedBox(height: 12),
+                Text(_getFilterTitle(), style: theme.textTheme.titleMedium),
+                const SizedBox(height: 12),
+                if (filteredServices.isEmpty)
+                  Text('Nenhum serviço para este período.', style: theme.textTheme.bodyMedium)
                 else
-                  Column(
-                    children: todayServices.map((service) {
-                      return _ServiceCard(service: service);
-                    }).toList(),
-                  ),
+                  ...filteredServices.map((service) => _ServiceCard(service: service)),
               ],
             ),
           ),
@@ -166,9 +135,212 @@ class _HomePageState extends State<HomePage> {
       ),
     );
   }
+
+  Widget _buildFilterButtons(ThemeData theme) {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          _buildFilterChip('Hoje', 'hoje', theme),
+          const SizedBox(width: 8),
+          _buildFilterChip('Semana', 'semana', theme),
+          const SizedBox(width: 8),
+          _buildFilterChip('Mês', 'mes', theme),
+          const SizedBox(width: 8),
+          _buildFilterChip('Ano', 'ano', theme),
+          const SizedBox(width: 8),
+          _buildFilterChip('Período', 'periodo', theme),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFilterChip(String label, String value, ThemeData theme) {
+    final isSelected = _filterType == value;
+    return FilterChip(
+      label: Text(
+        label,
+        style: TextStyle(
+          fontSize: 13,
+          color: isSelected ? theme.colorScheme.onPrimary : theme.colorScheme.onSurface,
+        ),
+      ),
+      selected: isSelected,
+      onSelected: (selected) {
+        setState(() {
+          _filterType = value;
+          if (value == 'periodo') {
+            _startDate = null;
+            _endDate = null;
+          }
+        });
+      },
+      selectedColor: theme.colorScheme.primary,
+      backgroundColor: theme.colorScheme.surfaceVariant,
+    );
+  }
+
+  Widget _buildPeriodSelector(ThemeData theme) {
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Selecione o período', style: theme.textTheme.titleSmall),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: InkWell(
+                    onTap: () async {
+                      final date = await showDatePicker(
+                        context: context,
+                        initialDate: _startDate ?? DateTime.now(),
+                        firstDate: DateTime(2024, 1, 1),
+                        lastDate: DateTime(2030, 12, 31),
+                      );
+                      if (date != null) {
+                        setState(() {
+                          _startDate = date;
+                        });
+                      }
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.grey.shade300),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.calendar_today, size: 18, color: theme.colorScheme.primary),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              _startDate != null
+                                  ? DateFormat('dd/MM/yyyy').format(_startDate!)
+                                  : 'Data inicial',
+                              style: theme.textTheme.bodySmall,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: InkWell(
+                    onTap: () async {
+                      final date = await showDatePicker(
+                        context: context,
+                        initialDate: _endDate ?? DateTime.now(),
+                        firstDate: _startDate ?? DateTime(2024, 1, 1),
+                        lastDate: DateTime(2030, 12, 31),
+                      );
+                      if (date != null) {
+                        setState(() {
+                          _endDate = date;
+                        });
+                      }
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.grey.shade300),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.calendar_today, size: 18, color: theme.colorScheme.primary),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              _endDate != null
+                                  ? DateFormat('dd/MM/yyyy').format(_endDate!)
+                                  : 'Data final',
+                              style: theme.textTheme.bodySmall,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  List<Service> _getFilteredServices() {
+    switch (_filterType) {
+      case 'hoje':
+        return widget.services.where((s) {
+          return s.date.year == _selectedDate.year &&
+                 s.date.month == _selectedDate.month &&
+                 s.date.day == _selectedDate.day;
+        }).toList();
+      case 'semana':
+        final weekStart = _getWeekStart(_selectedDate);
+        final weekEnd = weekStart.add(const Duration(days: 6));
+        return widget.services.where((s) {
+          return s.date.isAfter(weekStart.subtract(const Duration(days: 1))) &&
+                 s.date.isBefore(weekEnd.add(const Duration(days: 1)));
+        }).toList();
+      case 'mes':
+        return widget.services.where((s) {
+          return s.date.year == _selectedDate.year && s.date.month == _selectedDate.month;
+        }).toList();
+      case 'ano':
+        return widget.services.where((s) {
+          return s.date.year == _selectedDate.year;
+        }).toList();
+      case 'periodo':
+        if (_startDate == null || _endDate == null) {
+          return [];
+        }
+        return widget.services.where((s) {
+          return s.date.isAfter(_startDate!.subtract(const Duration(days: 1))) &&
+                 s.date.isBefore(_endDate!.add(const Duration(days: 1)));
+        }).toList();
+      default:
+        return [];
+    }
+  }
+
+  String _getFilterTitle() {
+    switch (_filterType) {
+      case 'dia':
+        return 'Serviços de ${DateFormat('dd/MM/yyyy').format(_selectedDate)}';
+      case 'semana':
+        final weekStart = _getWeekStart(_selectedDate);
+        final weekEnd = weekStart.add(const Duration(days: 6));
+        return 'Serviços de ${DateFormat('dd/MM').format(weekStart)} a ${DateFormat('dd/MM/yyyy').format(weekEnd)}';
+      case 'mes':
+        return 'Serviços de ${DateFormat('MMMM yyyy', 'pt_BR').format(_selectedDate)}';
+      case 'ano':
+        return 'Serviços de ${_selectedDate.year}';
+      case 'periodo':
+        if (_startDate == null || _endDate == null) {
+          return 'Selecione as datas do período';
+        }
+        return 'Serviços de ${DateFormat('dd/MM/yyyy').format(_startDate!)} a ${DateFormat('dd/MM/yyyy').format(_endDate!)}';
+      default:
+        return 'Serviços';
+    }
+  }
+
+  DateTime _getWeekStart(DateTime date) {
+    return date.subtract(Duration(days: date.weekday - 1));
+  }
 }
 
-/// Card para exibir informações básicas de um serviço na tela inicial.
 class _ServiceCard extends StatelessWidget {
   final Service service;
   const _ServiceCard({required this.service});
@@ -176,58 +348,179 @@ class _ServiceCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final serviceProvider = context.watch<ServiceProvider>();
+
     return Card(
       elevation: 4,
       margin: const EdgeInsets.symmetric(vertical: 8),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: Padding(
         padding: const EdgeInsets.all(12.0),
-        child: Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(
-              Icons.access_time,
-              color: theme.colorScheme.primary,
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '${service.startTime} - ${service.endTime}',
-                    style: theme.textTheme.titleMedium,
+            Row(
+              children: [
+                Icon(Icons.access_time, color: theme.colorScheme.primary),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        DateFormat('dd/MM/yyyy').format(service.date),
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.secondary,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 20
+                        ),
+                      ),
+                      Text('${service.startTime} - ${service.endTime}',
+                          style: theme.textTheme.titleMedium),
+                      Text(service.period.capitalize(),
+                          style: theme.textTheme.bodyMedium),
+                      
+                    ],
                   ),
-                  Text(
-                    service.period.capitalize(),
-                    style: theme.textTheme.bodyMedium,
-                  ),
-                ],
-              ),
+                ),
+                PopupMenuButton<String>(
+                  enabled: !service.received,
+                  onSelected: (value) => _handleMenuAction(context, value, service),
+                  itemBuilder: (context) => [
+                    const PopupMenuItem(value: 'edit', child: Text('Editar')),
+                    const PopupMenuItem(value: 'delete', child: Text('Excluir')),
+                  ],
+                ),
+              ],
             ),
-            Container(
-              decoration: BoxDecoration(
-                color: service.realized
-                    ? theme.colorScheme.primaryContainer
-                    : theme.colorScheme.secondaryContainer,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              child: Text(
-                service.realized ? 'Realizado' : 'Pendente',
-                style: theme.textTheme.labelMedium?.copyWith(
-                  color: service.realized
-                      ? theme.colorScheme.onPrimaryContainer
-                      : theme.colorScheme.onSecondaryContainer,
+            const Divider(),
+            Row(
+              children: [
+                Expanded(
+                  child: Text('Realizado', style: theme.textTheme.bodySmall),
+                ),
+                Switch(
+                  value: service.realized,
+                  onChanged: service.received
+                      ? null
+                      : (_) => serviceProvider.toggleRealized(service),
+                ),
+              ],
+            ),
+            Row(
+              children: [
+                Expanded(
+                  child: Text('Recebido', style: theme.textTheme.bodySmall),
+                ),
+                Switch(
+                  value: service.received,
+                  onChanged: service.realized
+                      ? (value) => _handleReceivedToggle(context, service, value)
+                      : null,
+                ),
+              ],
+            ),
+            if (service.paymentDate != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(
+                  'Pago em: ${DateFormat('dd/MM/yyyy').format(service.paymentDate!)}',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.primary,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
-            ),
           ],
         ),
       ),
     );
+  }
+
+  void _handleMenuAction(BuildContext context, String action, Service service) async {
+    final serviceProvider = context.read<ServiceProvider>();
+    final notifService = NotificationService();
+
+    if (action == 'edit') {
+      final updated = await Navigator.of(context).push<Service?>(
+        MaterialPageRoute(
+          builder: (_) => ServiceFormPage(existingService: service),
+        ),
+      );
+
+      if (updated != null) {
+        await serviceProvider.updateService(updated);
+        await notifService.cancelNotification(service.id!);
+        
+        final notifTime = updated.date.subtract(const Duration(hours: 1));
+        await notifService.scheduleNotification(
+          id: updated.id!,
+          scheduledDate: tz.TZDateTime.from(notifTime, tz.local),
+          title: 'Serviço DERSO',
+          body: 'Você possui um serviço ${updated.period} em ${DateFormat('dd/MM/yyyy').format(updated.date)} às ${updated.startTime}.',
+        );
+      }
+    } else if (action == 'delete') {
+      final confirm = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Confirmar exclusão'),
+          content: const Text('Deseja realmente excluir este serviço?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancelar'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Excluir'),
+            ),
+          ],
+        ),
+      );
+
+      if (confirm == true) {
+        final success = await serviceProvider.deleteService(service.id!);
+        if (success) {
+          await notifService.cancelNotification(service.id!);
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Serviço excluído com sucesso')),
+            );
+          }
+        } else {
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Não é possível excluir serviço já recebido')),
+            );
+          }
+        }
+      }
+    }
+  }
+
+  void _handleReceivedToggle(BuildContext context, Service service, bool value) async {
+    final serviceProvider = context.read<ServiceProvider>();
+
+    if (value) {
+      final paymentDate = await showDatePicker(
+        context: context,
+        initialDate: DateTime.now(),
+        firstDate: DateTime(2024, 1, 1),
+        lastDate: DateTime(2030, 12, 31),
+      );
+
+      if (paymentDate != null) {
+        final success = await serviceProvider.markAsReceived(service, paymentDate);
+        if (!success && context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Marque o serviço como realizado primeiro')),
+          );
+        }
+      }
+    } else {
+      await serviceProvider.unmarkAsReceived(service);
+    }
   }
 }
 

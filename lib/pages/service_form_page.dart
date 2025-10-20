@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
@@ -8,7 +9,7 @@ import '../widgets/gradient_header.dart';
 
 /// Tela para cadastro de um serviço. Permite escolher data, horário inicial e
 /// final, define o período automaticamente com base na hora inicial, informa o
-/// valor (fixo) e se foi realizado. Ao salvar retorna o serviço criado para a
+/// valor (editável) e se foi realizado. Ao salvar retorna o serviço criado para a
 /// tela anterior.
 class ServiceFormPage extends StatefulWidget {
   final Service? existingService;
@@ -20,11 +21,11 @@ class ServiceFormPage extends StatefulWidget {
 
 class _ServiceFormPageState extends State<ServiceFormPage> {
   final _formKey = GlobalKey<FormState>();
+  final _valueController = TextEditingController();
   DateTime _selectedDate = DateTime.now();
   TimeOfDay _startTime = const TimeOfDay(hour: 8, minute: 0);
   TimeOfDay _endTime = const TimeOfDay(hour: 12, minute: 0);
   bool _realized = false;
-  final double _serviceValue = 289.25;
   DateTime? _paymentDate;
 
   @override
@@ -37,7 +38,16 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
       _endTime = _parseTime(service.endTime);
       _realized = service.realized;
       _paymentDate = service.paymentDate;
+      _valueController.text = service.value.toStringAsFixed(2);
+    } else {
+      _valueController.text = '289.25';
     }
+  }
+
+  @override
+  void dispose() {
+    _valueController.dispose();
+    super.dispose();
   }
 
   @override
@@ -148,7 +158,30 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
                   style: Theme.of(context).textTheme.titleMedium,
                 ),
                 const SizedBox(height: 8),
-                Text('R\$ ${_serviceValue.toStringAsFixed(2)}'),
+                TextFormField(
+                  controller: _valueController,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  inputFormatters: [
+                    FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,2}')),
+                  ],
+                  decoration: InputDecoration(
+                    prefixText: 'R\$ ',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    hintText: '289.25',
+                  ),
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'Informe o valor do serviço';
+                    }
+                    final doubleValue = double.tryParse(value);
+                    if (doubleValue == null || doubleValue <= 0) {
+                      return 'Informe um valor válido';
+                    }
+                    return null;
+                  },
+                ),
                 const SizedBox(height: 16),
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
@@ -202,14 +235,16 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
                     onPressed: () {
                       if (_formKey.currentState!.validate()) {
                         final period = _getPeriod(_startTime);
+                        final value = double.parse(_valueController.text);
                         final service = Service(
                           id: widget.existingService?.id,
                           date: _selectedDate,
                           startTime: _formatTime(_startTime),
                           endTime: _formatTime(_endTime),
                           period: period,
-                          value: _serviceValue,
+                          value: value,
                           realized: _realized,
+                          received: widget.existingService?.received ?? false,
                           paymentDate: _paymentDate,
                           userId: userProvider.user!.id!,
                         );

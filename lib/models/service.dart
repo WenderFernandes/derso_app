@@ -1,14 +1,15 @@
 /// Representa um serviço realizado pelo policial no programa DERSO.
 class Service {
   final int? id;
-  final DateTime date; // Data do serviço
-  final String startTime; // Hora inicial (HH:mm)
-  final String endTime; // Hora final (HH:mm)
-  final String period; // manhã, tarde ou noite
-  final double value; // Valor único do serviço
-  final bool realized; // Se o serviço foi realizado
-  final DateTime? paymentDate; // Data em que o serviço foi pago, caso exista
-  final int userId; // Chave estrangeira para o usuário que criou o serviço
+  final DateTime date;
+  final String startTime;
+  final String endTime;
+  final String period;
+  final double value;
+  final bool realized;
+  final bool received; // Nova flag para controle de recebimento
+  final DateTime? paymentDate;
+  final int userId;
 
   Service({
     this.id,
@@ -17,7 +18,8 @@ class Service {
     required this.endTime,
     required this.period,
     required this.value,
-    required this.realized,
+    this.realized = false,
+    this.received = false,
     this.paymentDate,
     required this.userId,
   });
@@ -31,6 +33,7 @@ class Service {
       'period': period,
       'value': value,
       'realized': realized ? 1 : 0,
+      'received': received ? 1 : 0,
       'paymentDate': paymentDate?.toIso8601String(),
       'userId': userId,
     };
@@ -45,10 +48,37 @@ class Service {
       period: map['period'] as String,
       value: (map['value'] as num).toDouble(),
       realized: (map['realized'] as int) == 1,
+      received: (map['received'] as int? ?? 0) == 1,
       paymentDate: map['paymentDate'] != null && map['paymentDate'] != ''
           ? DateTime.parse(map['paymentDate'] as String)
           : null,
       userId: map['userId'] as int,
+    );
+  }
+
+  Service copyWith({
+    int? id,
+    DateTime? date,
+    String? startTime,
+    String? endTime,
+    String? period,
+    double? value,
+    bool? realized,
+    bool? received,
+    DateTime? paymentDate,
+    int? userId,
+  }) {
+    return Service(
+      id: id ?? this.id,
+      date: date ?? this.date,
+      startTime: startTime ?? this.startTime,
+      endTime: endTime ?? this.endTime,
+      period: period ?? this.period,
+      value: value ?? this.value,
+      realized: realized ?? this.realized,
+      received: received ?? this.received,
+      paymentDate: paymentDate ?? this.paymentDate,
+      userId: userId ?? this.userId,
     );
   }
 }

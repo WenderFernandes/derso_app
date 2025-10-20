@@ -19,10 +19,11 @@ class ServiceProvider extends ChangeNotifier {
   }
 
   /// Adiciona um novo serviço ao banco de dados e atualiza a lista local.
-  Future<void> addService(Service service) async {
+  Future<int> addService(Service service) async {
     final id = await _dbService.insertService(service);
     _services.add(service.copyWith(id: id));
     notifyListeners();
+    return id;
   }
 
   /// Atualiza um serviço existente.
@@ -35,36 +36,48 @@ class ServiceProvider extends ChangeNotifier {
     }
   }
 
-  /// Remove um serviço.
-  Future<void> deleteService(int id) async {
+  /// Remove um serviço (apenas se não foi recebido).
+  Future<bool> deleteService(int id) async {
+    final service = _services.firstWhere((s) => s.id == id);
+    if (service.received) {
+      return false; // Não pode excluir serviço já recebido
+    }
+    
     await _dbService.deleteService(id);
     _services.removeWhere((s) => s.id == id);
     notifyListeners();
+    return true;
   }
-}
 
-extension on Service {
-  Service copyWith({
-    int? id,
-    DateTime? date,
-    String? startTime,
-    String? endTime,
-    String? period,
-    double? value,
-    bool? realized,
-    DateTime? paymentDate,
-    int? userId,
-  }) {
-    return Service(
-      id: id ?? this.id,
-      date: date ?? this.date,
-      startTime: startTime ?? this.startTime,
-      endTime: endTime ?? this.endTime,
-      period: period ?? this.period,
-      value: value ?? this.value,
-      realized: realized ?? this.realized,
-      paymentDate: paymentDate ?? this.paymentDate,
-      userId: userId ?? this.userId,
+  /// Marca/desmarca serviço como realizado.
+  Future<void> toggleRealized(Service service) async {
+    final updated = service.copyWith(
+      realized: !service.realized,
+      received: service.realized ? false : service.received, // Se desmarcar realizado, desmarca recebido
     );
+    await updateService(updated);
+  }
+
+  /// Marca serviço como recebido (só se já estiver realizado).
+  Future<bool> markAsReceived(Service service, DateTime paymentDate) async {
+    if (!service.realized) {
+      return false; // Não pode receber sem realizar
+    }
+    
+    final updated = service.copyWith(
+      received: true,
+      paymentDate: paymentDate,
+    );
+    await updateService(updated);
+    return true;
+  }
+
+  /// Desmarca serviço como recebido.
+  Future<void> unmarkAsReceived(Service service) async {
+    final updated = service.copyWith(
+      received: false,
+      paymentDate: null,
+    );
+    await updateService(updated);
   }
 }

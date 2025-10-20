@@ -45,4 +45,4 @@ flutter:
 
   # Crie esta pasta mesmo que vazia (necessária se quiser usar ícones ou imagens)
   assets:
-    - assets/
+    # - assets/

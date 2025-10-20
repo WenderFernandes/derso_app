@@ -175,7 +175,7 @@ class _RegisterPageState extends State<RegisterPage> {
                     const SizedBox(height: 32),
                     AnimatedContainer(
                       duration: const Duration(milliseconds: 200),
-                      width: _isLoading ? 56 : double.infinity,
+                      width: _isLoading ? 56 : 300,
                       height: 56,
                       child: ElevatedButton(
                         onPressed: _isLoading
