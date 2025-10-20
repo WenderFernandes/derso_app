@@ -5,6 +5,7 @@ import 'package:intl/date_symbol_data_local.dart';
 
 import 'providers/user_provider.dart';
 import 'providers/service_provider.dart';
+import 'providers/theme_provider.dart';
 import 'services/notification_service.dart';
 import 'pages/login_page.dart';
 import 'pages/home_page.dart';
@@ -20,7 +21,7 @@ void main() async {
 }
 
 /// Widget raiz da aplicação. Define temas claro e escuro e fornece provedor
-/// para usuário e serviços.
+/// para usuário, serviços e tema.
 class DersoApp extends StatelessWidget {
   const DersoApp({Key? key}) : super(key: key);
 
@@ -30,22 +31,27 @@ class DersoApp extends StatelessWidget {
       providers: [
         ChangeNotifierProvider(create: (_) => UserProvider()),
         ChangeNotifierProvider(create: (_) => ServiceProvider()),
+        ChangeNotifierProvider(create: (_) => ThemeProvider()),
       ],
-      child: MaterialApp(
-        title: 'DERSO',
-        debugShowCheckedModeBanner: false,
-        themeMode: ThemeMode.system,
-        theme: _buildLightTheme(),
-        darkTheme: _buildDarkTheme(),
-        home: Consumer<UserProvider>(
-          builder: (context, userProvider, _) {
-            if (userProvider.user == null) {
-              return const LoginPage();
-            } else {
-              return const HomePage();
-            }
-          },
-        ),
+      child: Consumer<ThemeProvider>(
+        builder: (context, themeProvider, child) {
+          return MaterialApp(
+            title: 'DERSO',
+            debugShowCheckedModeBanner: false,
+            themeMode: themeProvider.themeMode,
+            theme: _buildLightTheme(),
+            darkTheme: _buildDarkTheme(),
+            home: Consumer<UserProvider>(
+              builder: (context, userProvider, _) {
+                if (userProvider.user == null) {
+                  return const LoginPage();
+                } else {
+                  return const HomePage();
+                }
+              },
+            ),
+          );
+        },
       ),
     );
   }

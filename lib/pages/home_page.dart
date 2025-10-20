@@ -6,6 +6,7 @@ import 'package:timezone/timezone.dart' as tz;
 import '../models/service.dart';
 import '../providers/service_provider.dart';
 import '../providers/user_provider.dart';
+import '../providers/theme_provider.dart';
 import '../services/notification_service.dart';
 import '../widgets/gradient_header.dart';
 import 'calendar_page.dart';
@@ -37,8 +38,35 @@ class _HomePageState extends State<HomePage> {
   Widget build(BuildContext context) {
     final serviceProvider = context.watch<ServiceProvider>();
     final userProvider = context.watch<UserProvider>();
+    final themeProvider = context.watch<ThemeProvider>();
+
+    final firstName = userProvider.user?.name.split(' ').first ?? 'Usuário';
 
     return Scaffold(
+      appBar: AppBar(
+        title: Row(
+          children: [
+            const Text('DERSO'),
+            const Spacer(),
+            Text('Olá! $firstName'),
+          ],
+        ),
+        toolbarHeight: 48, // Diminuída para ocupar menos espaço
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.add),
+            onPressed: () => _addNewService(context),
+            tooltip: 'Novo serviço',
+          ),
+          IconButton(
+            icon: Icon(themeProvider.isDarkMode ? Icons.light_mode : Icons.dark_mode),
+            onPressed: () {
+              themeProvider.toggleTheme();
+            },
+            tooltip: 'Alternar tema',
+          ),
+        ],
+      ),
       body: IndexedStack(
         index: _currentIndex,
         children: [
@@ -47,11 +75,6 @@ class _HomePageState extends State<HomePage> {
           DashboardPage(services: serviceProvider.services),
           ProfilePage(user: userProvider.user!),
         ],
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => _addNewService(context),
-        tooltip: 'Novo serviço',
-        child: const Icon(Icons.add),
       ),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentIndex,
@@ -189,8 +212,8 @@ class _HomeTabState extends State<_HomeTab> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Selecione o período', style: theme.textTheme.titleSmall),
-            const SizedBox(height: 12),
+            Text('Selecione o período', style: theme.textTheme.titleMedium),
+            const SizedBox(height: 8),
             Row(
               children: [
                 Expanded(
@@ -214,31 +237,23 @@ class _HomeTabState extends State<_HomeTab> {
                         border: Border.all(color: Colors.grey.shade300),
                         borderRadius: BorderRadius.circular(8),
                       ),
-                      child: Row(
-                        children: [
-                          Icon(Icons.calendar_today, size: 18, color: theme.colorScheme.primary),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              _startDate != null
-                                  ? DateFormat('dd/MM/yyyy').format(_startDate!)
-                                  : 'Data inicial',
-                              style: theme.textTheme.bodySmall,
-                            ),
-                          ),
-                        ],
+                      child: Text(
+                        _startDate != null
+                            ? DateFormat('dd/MM/yyyy').format(_startDate!)
+                            : 'Data inicial',
+                        style: theme.textTheme.bodyMedium,
                       ),
                     ),
                   ),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 8),
                 Expanded(
                   child: InkWell(
                     onTap: () async {
                       final date = await showDatePicker(
                         context: context,
                         initialDate: _endDate ?? DateTime.now(),
-                        firstDate: _startDate ?? DateTime(2024, 1, 1),
+                        firstDate: DateTime(2024, 1, 1),
                         lastDate: DateTime(2030, 12, 31),
                       );
                       if (date != null) {
@@ -253,19 +268,11 @@ class _HomeTabState extends State<_HomeTab> {
                         border: Border.all(color: Colors.grey.shade300),
                         borderRadius: BorderRadius.circular(8),
                       ),
-                      child: Row(
-                        children: [
-                          Icon(Icons.calendar_today, size: 18, color: theme.colorScheme.primary),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              _endDate != null
-                                  ? DateFormat('dd/MM/yyyy').format(_endDate!)
-                                  : 'Data final',
-                              style: theme.textTheme.bodySmall,
-                            ),
-                          ),
-                        ],
+                      child: Text(
+                        _endDate != null
+                            ? DateFormat('dd/MM/yyyy').format(_endDate!)
+                            : 'Data final',
+                        style: theme.textTheme.bodyMedium,
                       ),
                     ),
                   ),
@@ -281,45 +288,44 @@ class _HomeTabState extends State<_HomeTab> {
   List<Service> _getFilteredServices() {
     switch (_filterType) {
       case 'hoje':
-        return widget.services.where((s) {
-          return s.date.year == _selectedDate.year &&
-                 s.date.month == _selectedDate.month &&
-                 s.date.day == _selectedDate.day;
+        return widget.services.where((service) {
+          return DateUtils.isSameDay(service.date, _selectedDate);
         }).toList();
       case 'semana':
-        final weekStart = _getWeekStart(_selectedDate);
+        final weekStart = _selectedDate.subtract(Duration(days: _selectedDate.weekday - 1));
         final weekEnd = weekStart.add(const Duration(days: 6));
-        return widget.services.where((s) {
-          return s.date.isAfter(weekStart.subtract(const Duration(days: 1))) &&
-                 s.date.isBefore(weekEnd.add(const Duration(days: 1)));
+        return widget.services.where((service) {
+          return service.date.isAfter(weekStart.subtract(const Duration(days: 1))) &&
+              service.date.isBefore(weekEnd.add(const Duration(days: 1)));
         }).toList();
       case 'mes':
-        return widget.services.where((s) {
-          return s.date.year == _selectedDate.year && s.date.month == _selectedDate.month;
+        return widget.services.where((service) {
+          return service.date.year == _selectedDate.year &&
+              service.date.month == _selectedDate.month;
         }).toList();
       case 'ano':
-        return widget.services.where((s) {
-          return s.date.year == _selectedDate.year;
+        return widget.services.where((service) {
+          return service.date.year == _selectedDate.year;
         }).toList();
       case 'periodo':
         if (_startDate == null || _endDate == null) {
           return [];
         }
-        return widget.services.where((s) {
-          return s.date.isAfter(_startDate!.subtract(const Duration(days: 1))) &&
-                 s.date.isBefore(_endDate!.add(const Duration(days: 1)));
+        return widget.services.where((service) {
+          return service.date.isAfter(_startDate!.subtract(const Duration(days: 1))) &&
+              service.date.isBefore(_endDate!.add(const Duration(days: 1)));
         }).toList();
       default:
-        return [];
+        return widget.services;
     }
   }
 
   String _getFilterTitle() {
     switch (_filterType) {
-      case 'dia':
-        return 'Serviços de ${DateFormat('dd/MM/yyyy').format(_selectedDate)}';
+      case 'hoje':
+        return 'Serviços de hoje (${DateFormat('dd/MM/yyyy').format(_selectedDate)})';
       case 'semana':
-        final weekStart = _getWeekStart(_selectedDate);
+        final weekStart = _selectedDate.subtract(Duration(days: _selectedDate.weekday - 1));
         final weekEnd = weekStart.add(const Duration(days: 6));
         return 'Serviços de ${DateFormat('dd/MM').format(weekStart)} a ${DateFormat('dd/MM/yyyy').format(weekEnd)}';
       case 'mes':
@@ -328,16 +334,12 @@ class _HomeTabState extends State<_HomeTab> {
         return 'Serviços de ${_selectedDate.year}';
       case 'periodo':
         if (_startDate == null || _endDate == null) {
-          return 'Selecione as datas do período';
+          return 'Selecione o período';
         }
         return 'Serviços de ${DateFormat('dd/MM/yyyy').format(_startDate!)} a ${DateFormat('dd/MM/yyyy').format(_endDate!)}';
       default:
         return 'Serviços';
     }
-  }
-
-  DateTime _getWeekStart(DateTime date) {
-    return date.subtract(Duration(days: date.weekday - 1));
   }
 }
 
@@ -348,14 +350,14 @@ class _ServiceCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final serviceProvider = context.watch<ServiceProvider>();
+    final serviceProvider = context.read<ServiceProvider>();
 
     return Card(
-      elevation: 4,
       margin: const EdgeInsets.symmetric(vertical: 8),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      elevation: 2,
       child: Padding(
-        padding: const EdgeInsets.all(12.0),
+        padding: const EdgeInsets.all(16.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -372,14 +374,13 @@ class _ServiceCard extends StatelessWidget {
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: theme.colorScheme.secondary,
                           fontWeight: FontWeight.bold,
-                          fontSize: 20
+                          fontSize: 20,
                         ),
                       ),
                       Text('${service.startTime} - ${service.endTime}',
                           style: theme.textTheme.titleMedium),
                       Text(service.period.capitalize(),
                           style: theme.textTheme.bodyMedium),
-                      
                     ],
                   ),
                 ),
