@@ -1,3 +1,5 @@
+import 'package:flutter/material.dart';
+
 /// Representa um serviço realizado pelo policial no programa DERSO.
 class Service {
   final int? id;
@@ -7,9 +9,10 @@ class Service {
   final String period;
   final double value;
   final bool realized;
-  final bool received; // Nova flag para controle de recebimento
+  final bool received;
   final DateTime? paymentDate;
   final int userId;
+  final NotificationPreference notificationPreference;
 
   Service({
     this.id,
@@ -22,6 +25,7 @@ class Service {
     this.received = false,
     this.paymentDate,
     required this.userId,
+    this.notificationPreference = NotificationPreference.oneHourBefore,
   });
 
   Map<String, dynamic> toMap() {
@@ -36,6 +40,7 @@ class Service {
       'received': received ? 1 : 0,
       'paymentDate': paymentDate?.toIso8601String(),
       'userId': userId,
+      'notificationPreference': notificationPreference.index,
     };
   }
 
@@ -53,6 +58,9 @@ class Service {
           ? DateTime.parse(map['paymentDate'] as String)
           : null,
       userId: map['userId'] as int,
+      notificationPreference: NotificationPreference.values[
+        map['notificationPreference'] as int? ?? 0
+      ],
     );
   }
 
@@ -67,6 +75,7 @@ class Service {
     bool? received,
     DateTime? paymentDate,
     int? userId,
+    NotificationPreference? notificationPreference,
   }) {
     return Service(
       id: id ?? this.id,
@@ -79,6 +88,47 @@ class Service {
       received: received ?? this.received,
       paymentDate: paymentDate ?? this.paymentDate,
       userId: userId ?? this.userId,
+      notificationPreference: notificationPreference ?? this.notificationPreference,
     );
+  }
+}
+
+enum NotificationPreference {
+  oneHourBefore,
+  twoHoursBefore,
+  threeHoursBefore,
+  oneDayBefore,
+  sameDay,
+}
+
+extension NotificationPreferenceExtension on NotificationPreference {
+  String get label {
+    switch (this) {
+      case NotificationPreference.oneHourBefore:
+        return '1 hora antes';
+      case NotificationPreference.twoHoursBefore:
+        return '2 horas antes';
+      case NotificationPreference.threeHoursBefore:
+        return '3 horas antes';
+      case NotificationPreference.oneDayBefore:
+        return '1 dia antes';
+      case NotificationPreference.sameDay:
+        return 'No mesmo dia (8h)';
+    }
+  }
+
+  Duration get duration {
+    switch (this) {
+      case NotificationPreference.oneHourBefore:
+        return const Duration(hours: 1);
+      case NotificationPreference.twoHoursBefore:
+        return const Duration(hours: 2);
+      case NotificationPreference.threeHoursBefore:
+        return const Duration(hours: 3);
+      case NotificationPreference.oneDayBefore:
+        return const Duration(days: 1);
+      case NotificationPreference.sameDay:
+        return const Duration(hours: 0);
+    }
   }
 }

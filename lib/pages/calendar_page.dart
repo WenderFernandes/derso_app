@@ -10,9 +10,6 @@ import '../widgets/gradient_header.dart';
 import '../services/notification_service.dart';
 import 'service_form_page.dart';
 
-/// Tela com calendário interativo para visualizar e navegar pelos serviços
-/// agendados. O pacote table_calendar permite carregar eventos para cada dia
-/// através da propriedade eventLoader.
 class CalendarPage extends StatefulWidget {
   const CalendarPage({Key? key}) : super(key: key);
 
@@ -81,7 +78,6 @@ class _CalendarPageState extends State<CalendarPage> {
     );
   }
 
-  /// Agrupa os serviços por data para uso no eventLoader da TableCalendar.
   Map<DateTime, List<Service>> _groupServicesByDate(List<Service> services) {
     final Map<DateTime, List<Service>> data = {};
     for (final service in services) {
@@ -92,7 +88,6 @@ class _CalendarPageState extends State<CalendarPage> {
     return data;
   }
 
-  /// Lista os serviços do dia selecionado
   Widget _buildEventList(Map<DateTime, List<Service>> events, List<Service> allServices) {
     List<Service> filteredServices = [];
     String title = '';
@@ -142,42 +137,86 @@ class _CalendarEventTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final serviceProvider = context.read<ServiceProvider>();
+    
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 4),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       elevation: 2,
-      child: ListTile(
-        leading: Icon(Icons.schedule, color: theme.colorScheme.primary),
-        title: Text('${service.startTime} - ${service.endTime}'),
-        subtitle: Column(
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(service.period.capitalize()),
-            Text(
-              'R\$ ${service.value.toStringAsFixed(2)}',
-              style: TextStyle(
-                color: theme.colorScheme.primary,
-                fontWeight: FontWeight.bold,
-              ),
+            Row(
+              children: [
+                Icon(Icons.schedule, color: theme.colorScheme.primary),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('${service.startTime} - ${service.endTime}',
+                          style: theme.textTheme.titleMedium),
+                      Text(service.period.capitalize(),
+                          style: theme.textTheme.bodyMedium),
+                      Text(
+                        'R\$ ${service.value.toStringAsFixed(2)}',
+                        style: TextStyle(
+                          color: theme.colorScheme.primary,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                if (!service.received)
+                  PopupMenuButton<String>(
+                    onSelected: (value) => _handleMenuAction(context, value, service),
+                    itemBuilder: (context) => [
+                      const PopupMenuItem(value: 'edit', child: Text('Editar')),
+                      const PopupMenuItem(value: 'delete', child: Text('Excluir')),
+                    ],
+                  ),
+              ],
             ),
-          ],
-        ),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              service.realized ? Icons.check_circle : Icons.hourglass_bottom,
-              color: service.realized
-                  ? theme.colorScheme.primary
-                  : theme.colorScheme.secondary,
+            const Divider(),
+            Row(
+              children: [
+                Expanded(
+                  child: Text('Realizado', style: theme.textTheme.bodySmall),
+                ),
+                Switch(
+                  value: service.realized,
+                  onChanged: service.received
+                      ? null
+                      : (_) => serviceProvider.toggleRealized(service),
+                ),
+              ],
             ),
-            if (!service.received)
-              PopupMenuButton<String>(
-                onSelected: (value) => _handleMenuAction(context, value, service),
-                itemBuilder: (context) => [
-                  const PopupMenuItem(value: 'edit', child: Text('Editar')),
-                  const PopupMenuItem(value: 'delete', child: Text('Excluir')),
-                ],
+            Row(
+              children: [
+                Expanded(
+                  child: Text('Recebido', style: theme.textTheme.bodySmall),
+                ),
+                Switch(
+                  value: service.received,
+                  onChanged: service.realized
+                      ? (value) => _handleReceivedToggle(context, service, value)
+                      : null,
+                ),
+              ],
+            ),
+            if (service.paymentDate != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(
+                  'Pago em: ${DateFormat('dd/MM/yyyy').format(service.paymentDate!)}',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.primary,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
               ),
           ],
         ),
@@ -200,13 +239,20 @@ class _CalendarEventTile extends StatelessWidget {
         await serviceProvider.updateService(updated);
         await notifService.cancelNotification(service.id!);
         
-        final notifTime = updated.date.subtract(const Duration(hours: 1));
-        await notifService.scheduleNotification(
-          id: updated.id!,
-          scheduledDate: tz.TZDateTime.from(notifTime, tz.local),
-          title: 'Serviço DERSO',
-          body: 'Você possui um serviço ${updated.period} em ${DateFormat('dd/MM/yyyy').format(updated.date)} às ${updated.startTime}.',
+        final notifTime = _calculateNotificationTime(
+          updated.date,
+          updated.startTime,
+          updated.notificationPreference,
         );
+        
+        if (notifTime.isAfter(DateTime.now())) {
+          await notifService.scheduleNotification(
+            id: updated.id!,
+            scheduledDate: tz.TZDateTime.from(notifTime, tz.local),
+            title: 'Serviço DERSO',
+            body: 'Você possui um serviço ${updated.period} em ${DateFormat('dd/MM/yyyy').format(updated.date)} às ${updated.startTime}.',
+          );
+        }
         
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -251,6 +297,57 @@ class _CalendarEventTile extends StatelessWidget {
         }
       }
     }
+  }
+
+  void _handleReceivedToggle(BuildContext context, Service service, bool value) async {
+    final serviceProvider = context.read<ServiceProvider>();
+
+    if (value) {
+      final paymentDate = await showDatePicker(
+        context: context,
+        initialDate: DateTime.now(),
+        firstDate: DateTime(2024, 1, 1),
+        lastDate: DateTime(2030, 12, 31),
+      );
+
+      if (paymentDate != null) {
+        final success = await serviceProvider.markAsReceived(service, paymentDate);
+        if (!success && context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Marque o serviço como realizado primeiro')),
+          );
+        }
+      }
+    } else {
+      await serviceProvider.unmarkAsReceived(service);
+    }
+  }
+
+  DateTime _calculateNotificationTime(
+    DateTime serviceDate,
+    String startTime,
+    NotificationPreference preference,
+  ) {
+    final timeParts = startTime.split(':');
+    final serviceDateTime = DateTime(
+      serviceDate.year,
+      serviceDate.month,
+      serviceDate.day,
+      int.parse(timeParts[0]),
+      int.parse(timeParts[1]),
+    );
+
+    if (preference == NotificationPreference.sameDay) {
+      return DateTime(
+        serviceDate.year,
+        serviceDate.month,
+        serviceDate.day,
+        8,
+        0,
+      );
+    }
+
+    return serviceDateTime.subtract(preference.duration);
   }
 }
 

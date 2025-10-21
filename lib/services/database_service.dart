@@ -7,7 +7,6 @@ import 'package:sqflite/sqflite.dart';
 import '../models/user.dart';
 import '../models/service.dart';
 
-/// Serviço responsável por gerenciar a persistência de dados no SQLite.
 class DatabaseService {
   static final DatabaseService _instance = DatabaseService._internal();
   factory DatabaseService() => _instance;
@@ -26,14 +25,13 @@ class DatabaseService {
     final path = join(documentsDirectory.path, 'derso.db');
     return await openDatabase(
       path,
-      version: 2, // Incrementada versão para migrations
+      version: 3,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
   }
 
   FutureOr<void> _onCreate(Database db, int version) async {
-    // Tabela de usuários
     await db.execute('''
       CREATE TABLE users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -42,11 +40,12 @@ class DatabaseService {
         matricula TEXT NOT NULL UNIQUE,
         cpf TEXT NOT NULL,
         email TEXT NOT NULL UNIQUE,
-        password TEXT NOT NULL
+        password TEXT NOT NULL,
+        trialStartDate TEXT,
+        isPremium INTEGER NOT NULL DEFAULT 0
       )
     ''');
 
-    // Tabela de serviços com campo received
     await db.execute('''
       CREATE TABLE services (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -59,6 +58,7 @@ class DatabaseService {
         received INTEGER NOT NULL DEFAULT 0,
         paymentDate TEXT,
         userId INTEGER NOT NULL,
+        notificationPreference INTEGER NOT NULL DEFAULT 0,
         FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
       )
     ''');
@@ -66,25 +66,35 @@ class DatabaseService {
 
   FutureOr<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
     if (oldVersion < 2) {
-      // Adiciona coluna received se não existir
       await db.execute('''
         ALTER TABLE services ADD COLUMN received INTEGER NOT NULL DEFAULT 0
       ''');
       
-      // Garante que matrícula seja UNIQUE
       await db.execute('''
         CREATE UNIQUE INDEX IF NOT EXISTS idx_users_matricula ON users(matricula)
       ''');
     }
+    
+    if (oldVersion < 3) {
+      await db.execute('''
+        ALTER TABLE services ADD COLUMN notificationPreference INTEGER NOT NULL DEFAULT 0
+      ''');
+      
+      await db.execute('''
+        ALTER TABLE users ADD COLUMN trialStartDate TEXT
+      ''');
+      
+      await db.execute('''
+        ALTER TABLE users ADD COLUMN isPremium INTEGER NOT NULL DEFAULT 0
+      ''');
+    }
   }
 
-  // -------------------- Usuários --------------------
   Future<int> insertUser(User user) async {
     final db = await database;
     return await db.insert('users', user.toMap());
   }
 
-  /// Retorna o usuário com o e-mail fornecido.
   Future<User?> getUserByEmail(String email) async {
     final db = await database;
     final maps = await db.query(
@@ -99,7 +109,6 @@ class DatabaseService {
     return null;
   }
 
-  /// Retorna o usuário com a matrícula fornecida (usado para login).
   Future<User?> getUserByMatricula(String matricula) async {
     final db = await database;
     final maps = await db.query(
@@ -114,7 +123,6 @@ class DatabaseService {
     return null;
   }
 
-  /// Atualiza um usuário existente.
   Future<int> updateUser(User user) async {
     final db = await database;
     return await db.update(
@@ -125,7 +133,6 @@ class DatabaseService {
     );
   }
 
-  // -------------------- Serviços --------------------
   Future<int> insertService(Service service) async {
     final db = await database;
     return await db.insert('services', service.toMap());

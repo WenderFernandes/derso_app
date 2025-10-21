@@ -7,10 +7,6 @@ import '../models/service.dart';
 import '../providers/user_provider.dart';
 import '../widgets/gradient_header.dart';
 
-/// Tela para cadastro de um serviço. Permite escolher data, horário inicial e
-/// final, define o período automaticamente com base na hora inicial, informa o
-/// valor (editável) e se foi realizado. Ao salvar retorna o serviço criado para a
-/// tela anterior.
 class ServiceFormPage extends StatefulWidget {
   final Service? existingService;
   const ServiceFormPage({Key? key, this.existingService}) : super(key: key);
@@ -27,6 +23,7 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
   TimeOfDay _endTime = const TimeOfDay(hour: 12, minute: 0);
   bool _realized = false;
   DateTime? _paymentDate;
+  NotificationPreference _notificationPreference = NotificationPreference.oneHourBefore;
 
   @override
   void initState() {
@@ -39,6 +36,7 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
       _realized = service.realized;
       _paymentDate = service.paymentDate;
       _valueController.text = service.value.toStringAsFixed(2);
+      _notificationPreference = service.notificationPreference;
     } else {
       _valueController.text = '289.25';
     }
@@ -118,7 +116,6 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
                     if (time != null) {
                       setState(() {
                         _startTime = time;
-                        // Ajustar fim automaticamente se for antes do início
                         if (_endTime.hour < time.hour ||
                             (_endTime.hour == time.hour &&
                                 _endTime.minute <= time.minute)) {
@@ -180,6 +177,34 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
                       return 'Informe um valor válido';
                     }
                     return null;
+                  },
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Notificar',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                const SizedBox(height: 8),
+                DropdownButtonFormField<NotificationPreference>(
+                  value: _notificationPreference,
+                  decoration: InputDecoration(
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    prefixIcon: Icon(Icons.notifications_active),
+                  ),
+                  items: NotificationPreference.values.map((pref) {
+                    return DropdownMenuItem(
+                      value: pref,
+                      child: Text(pref.label),
+                    );
+                  }).toList(),
+                  onChanged: (value) {
+                    if (value != null) {
+                      setState(() {
+                        _notificationPreference = value;
+                      });
+                    }
                   },
                 ),
                 const SizedBox(height: 16),
@@ -247,6 +272,7 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
                           received: widget.existingService?.received ?? false,
                           paymentDate: _paymentDate,
                           userId: userProvider.user!.id!,
+                          notificationPreference: _notificationPreference,
                         );
                         Navigator.of(context).pop(service);
                       }
@@ -262,7 +288,6 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
     );
   }
 
-  /// Cria um widget que exibe o horário selecionado.
   Widget _buildTimeField(TimeOfDay time) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
@@ -281,7 +306,6 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
     );
   }
 
-  /// Formata TimeOfDay para string HH:mm.
   String _formatTime(TimeOfDay time) {
     final hours = time.hour.toString().padLeft(2, '0');
     final minutes = time.minute.toString().padLeft(2, '0');
@@ -296,8 +320,6 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
     );
   }
 
-  /// Define o período com base no horário inicial: manhã (5h–12h),
-  /// tarde (12h–18h), noite (18h–05h).
   String _getPeriod(TimeOfDay time) {
     final hour = time.hour;
     if (hour >= 5 && hour < 12) {

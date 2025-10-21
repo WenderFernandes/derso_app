@@ -5,21 +5,18 @@ import 'dart:convert';
 import '../models/user.dart';
 import '../services/database_service.dart';
 
-/// Provedor responsável por armazenar o usuário atual e gerenciar login/cadastro.
 class UserProvider extends ChangeNotifier {
   User? _user;
   User? get user => _user;
 
   final DatabaseService _dbService = DatabaseService();
 
-  /// Hash da senha usando SHA-256
   String _hashPassword(String password) {
     final bytes = utf8.encode(password);
     final digest = sha256.convert(bytes);
     return digest.toString();
   }
 
-  /// Realiza o cadastro de um novo usuário.
   Future<bool> register({
     required String name,
     required String nickName,
@@ -28,7 +25,6 @@ class UserProvider extends ChangeNotifier {
     required String email,
     required String password,
   }) async {
-    // Verifica se já existe um usuário com o e-mail ou matrícula
     final existingEmail = await _dbService.getUserByEmail(email);
     if (existingEmail != null) {
       return false;
@@ -46,6 +42,8 @@ class UserProvider extends ChangeNotifier {
       cpf: cpf,
       email: email,
       password: _hashPassword(password),
+      trialStartDate: DateTime.now(),
+      isPremium: false,
     );
     final id = await _dbService.insertUser(user);
     _user = user.copyWith(id: id);
@@ -53,7 +51,6 @@ class UserProvider extends ChangeNotifier {
     return true;
   }
 
-  /// Efetua o login usando matrícula e senha.
   Future<bool> login(String matricula, String password) async {
     final user = await _dbService.getUserByMatricula(matricula);
     if (user != null && user.password == _hashPassword(password)) {
@@ -64,7 +61,6 @@ class UserProvider extends ChangeNotifier {
     return false;
   }
 
-  /// Atualiza os dados do perfil do usuário.
   Future<bool> updateProfile({
     required String name,
     required String nickName,
@@ -73,7 +69,6 @@ class UserProvider extends ChangeNotifier {
   }) async {
     if (_user == null) return false;
 
-    // Verifica se o e-mail já está em uso por outro usuário
     final existingEmail = await _dbService.getUserByEmail(email);
     if (existingEmail != null && existingEmail.id != _user!.id) {
       return false;
@@ -92,7 +87,6 @@ class UserProvider extends ChangeNotifier {
     return true;
   }
 
-  /// Altera a senha do usuário.
   Future<bool> changePassword({
     required String currentPassword,
     required String newPassword,
@@ -113,7 +107,18 @@ class UserProvider extends ChangeNotifier {
     return true;
   }
 
-  /// Desloga o usuário atual.
+  Future<void> activatePremium() async {
+    if (_user == null) return;
+
+    final updatedUser = _user!.copyWith(
+      isPremium: true,
+    );
+
+    await _dbService.updateUser(updatedUser);
+    _user = updatedUser;
+    notifyListeners();
+  }
+
   void logout() {
     _user = null;
     notifyListeners();

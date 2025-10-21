@@ -28,9 +28,10 @@ dependencies:
   # Gráficos para dashboard
   fl_chart: ^1.1.1
 
-  # Notificações locais
+  # Notificações locais (versões compatíveis com Flutter 3.35.6)
   flutter_local_notifications: ^19.4.2
   timezone: ^0.10.1
+  permission_handler: ^11.3.1  # ✅ Adicionado para permissões
 
   # Internacionalização e formatação de datas
   intl: ^0.20.2
@@ -43,6 +44,5 @@ dev_dependencies:
 flutter:
   uses-material-design: true
 
-  # Crie esta pasta mesmo que vazia (necessária se quiser usar ícones ou imagens)
   assets:
     # - assets/

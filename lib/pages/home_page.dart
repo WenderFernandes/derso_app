@@ -29,9 +29,98 @@ class _HomePageState extends State<HomePage> {
     super.initState();
     final userProvider = context.read<UserProvider>();
     final serviceProvider = context.read<ServiceProvider>();
-    if (userProvider.user != null) {
-      serviceProvider.loadServices(userProvider.user!.id!);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final user = context.read<UserProvider>().user;
+      if (user != null) {
+        context.read<ServiceProvider>().loadServices(user.id!);
+        _checkTrialStatus();
+      }
+    });
+  }
+
+  void _checkTrialStatus() {
+    final user = context.read<UserProvider>().user;
+    if (user != null && !user.isTrialActive && !user.isPremium) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _showTrialExpiredDialog();
+      });
+    } else if (user != null && !user.isPremium && user.remainingTrialDays <= 3) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _showTrialWarning(user.remainingTrialDays);
+      });
     }
+  }
+
+  void _showTrialExpiredDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Text('Período de Teste Expirado'),
+        content: const Text(
+          'Seu período de teste de 10 dias expirou. Para continuar usando o DERSO, ative a versão premium.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              context.read<UserProvider>().logout();
+            },
+            child: const Text('Sair'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _showPremiumActivation();
+            },
+            child: const Text('Ativar Premium'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showTrialWarning(int remainingDays) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Restam $remainingDays dias do seu período de teste'),
+        duration: const Duration(seconds: 5),
+        action: SnackBarAction(
+          label: 'Ativar Premium',
+          onPressed: _showPremiumActivation,
+        ),
+      ),
+    );
+  }
+
+  void _showPremiumActivation() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Ativar Versão Premium'),
+        content: const Text(
+          'Entre em contato com o suporte para ativar sua versão premium.\n\nEmail: suporte@derso.com\nTelefone: (69) 9999-9999',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Fechar'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              await context.read<UserProvider>().activatePremium();
+              if (context.mounted) {
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Premium ativado com sucesso!')),
+                );
+              }
+            },
+            child: const Text('Ativar (Demo)'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -47,11 +136,25 @@ class _HomePageState extends State<HomePage> {
         title: Row(
           children: [
             const Text('DERSO'),
+            if (userProvider.user != null && !userProvider.user!.isPremium) ...[
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Colors.orange,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  'Trial: ${userProvider.user!.remainingTrialDays}d',
+                  style: const TextStyle(fontSize: 10, color: Colors.white),
+                ),
+              ),
+            ],
             const Spacer(),
             Text('Olá! $firstName'),
           ],
         ),
-        toolbarHeight: 48, // Diminuída para ocupar menos espaço
+        toolbarHeight: 48,
         actions: [
           IconButton(
             icon: const Icon(Icons.add),
@@ -67,15 +170,17 @@ class _HomePageState extends State<HomePage> {
           ),
         ],
       ),
-      body: IndexedStack(
-        index: _currentIndex,
-        children: [
-          _HomeTab(services: serviceProvider.services),
-          const CalendarPage(),
-          DashboardPage(services: serviceProvider.services),
-          ProfilePage(user: userProvider.user!),
-        ],
-      ),
+      body: userProvider.user == null
+        ? const Center(child: CircularProgressIndicator())
+        : IndexedStack(
+            index: _currentIndex,
+            children: [
+              _HomeTab(services: serviceProvider.services),
+              const CalendarPage(),
+              DashboardPage(services: serviceProvider.services),
+              ProfilePage(user: userProvider.user!),
+            ],
+          ),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentIndex,
         onTap: (index) => setState(() => _currentIndex = index),
@@ -100,15 +205,48 @@ class _HomePageState extends State<HomePage> {
       final serviceId = await serviceProvider.addService(newService);
 
       final notifService = NotificationService();
-      final notifTime = newService.date.subtract(const Duration(hours: 1));
+      final notifTime = _calculateNotificationTime(
+        newService.date,
+        newService.startTime,
+        newService.notificationPreference,
+      );
       
-      await notifService.scheduleNotification(
-        id: serviceId,
-        scheduledDate: tz.TZDateTime.from(notifTime, tz.local),
-        title: 'Serviço DERSO',
-        body: 'Você possui um serviço ${newService.period} em ${DateFormat('dd/MM/yyyy').format(newService.date)} às ${newService.startTime}.',
+      if (notifTime.isAfter(DateTime.now())) {
+        await notifService.scheduleNotification(
+          id: serviceId,
+          scheduledDate: tz.TZDateTime.from(notifTime, tz.local),
+          title: 'Serviço DERSO',
+          body: 'Você possui um serviço ${newService.period} em ${DateFormat('dd/MM/yyyy').format(newService.date)} às ${newService.startTime}.',
+        );
+      }
+    }
+  }
+
+  DateTime _calculateNotificationTime(
+    DateTime serviceDate,
+    String startTime,
+    NotificationPreference preference,
+  ) {
+    final timeParts = startTime.split(':');
+    final serviceDateTime = DateTime(
+      serviceDate.year,
+      serviceDate.month,
+      serviceDate.day,
+      int.parse(timeParts[0]),
+      int.parse(timeParts[1]),
+    );
+
+    if (preference == NotificationPreference.sameDay) {
+      return DateTime(
+        serviceDate.year,
+        serviceDate.month,
+        serviceDate.day,
+        8,
+        0,
       );
     }
+
+    return serviceDateTime.subtract(preference.duration);
   }
 }
 
@@ -453,13 +591,20 @@ class _ServiceCard extends StatelessWidget {
         await serviceProvider.updateService(updated);
         await notifService.cancelNotification(service.id!);
         
-        final notifTime = updated.date.subtract(const Duration(hours: 1));
-        await notifService.scheduleNotification(
-          id: updated.id!,
-          scheduledDate: tz.TZDateTime.from(notifTime, tz.local),
-          title: 'Serviço DERSO',
-          body: 'Você possui um serviço ${updated.period} em ${DateFormat('dd/MM/yyyy').format(updated.date)} às ${updated.startTime}.',
+        final notifTime = _calculateNotificationTime(
+          updated.date,
+          updated.startTime,
+          updated.notificationPreference,
         );
+        
+        if (notifTime.isAfter(DateTime.now())) {
+          await notifService.scheduleNotification(
+            id: updated.id!,
+            scheduledDate: tz.TZDateTime.from(notifTime, tz.local),
+            title: 'Serviço DERSO',
+            body: 'Você possui um serviço ${updated.period} em ${DateFormat('dd/MM/yyyy').format(updated.date)} às ${updated.startTime}.',
+          );
+        }
       }
     } else if (action == 'delete') {
       final confirm = await showDialog<bool>(
@@ -522,6 +667,33 @@ class _ServiceCard extends StatelessWidget {
     } else {
       await serviceProvider.unmarkAsReceived(service);
     }
+  }
+
+  DateTime _calculateNotificationTime(
+    DateTime serviceDate,
+    String startTime,
+    NotificationPreference preference,
+  ) {
+    final timeParts = startTime.split(':');
+    final serviceDateTime = DateTime(
+      serviceDate.year,
+      serviceDate.month,
+      serviceDate.day,
+      int.parse(timeParts[0]),
+      int.parse(timeParts[1]),
+    );
+
+    if (preference == NotificationPreference.sameDay) {
+      return DateTime(
+        serviceDate.year,
+        serviceDate.month,
+        serviceDate.day,
+        8,
+        0,
+      );
+    }
+
+    return serviceDateTime.subtract(preference.duration);
   }
 }
 

@@ -1,4 +1,3 @@
-/// Representa um policial cadastrado no aplicativo DERSO.
 class User {
   final int? id;
   final String name;
@@ -7,6 +6,8 @@ class User {
   final String cpf;
   final String email;
   final String password;
+  final DateTime? trialStartDate;
+  final bool isPremium;
 
   User({
     this.id,
@@ -16,9 +17,27 @@ class User {
     required this.cpf,
     required this.email,
     required this.password,
+    this.trialStartDate,
+    this.isPremium = false,
   });
 
-  /// Converte o usuário em um mapa para ser salvo no banco de dados SQLite.
+  bool get isTrialActive {
+    if (isPremium) return true;
+    if (trialStartDate == null) return true;
+    
+    final daysSinceStart = DateTime.now().difference(trialStartDate!).inDays;
+    return daysSinceStart <= 10;
+  }
+
+  int get remainingTrialDays {
+    if (isPremium) return -1;
+    if (trialStartDate == null) return 10;
+    
+    final daysSinceStart = DateTime.now().difference(trialStartDate!).inDays;
+    final remaining = 10 - daysSinceStart;
+    return remaining > 0 ? remaining : 0;
+  }
+
   Map<String, dynamic> toMap() {
     return {
       'id': id,
@@ -28,10 +47,11 @@ class User {
       'cpf': cpf,
       'email': email,
       'password': password,
+      'trialStartDate': trialStartDate?.toIso8601String(),
+      'isPremium': isPremium ? 1 : 0,
     };
   }
 
-  /// Cria uma instância de User a partir de um mapa retornado pelo banco.
   factory User.fromMap(Map<String, dynamic> map) {
     return User(
       id: map['id'] as int?,
@@ -41,10 +61,13 @@ class User {
       cpf: map['cpf'] as String,
       email: map['email'] as String,
       password: map['password'] as String,
+      trialStartDate: map['trialStartDate'] != null && map['trialStartDate'] != ''
+          ? DateTime.parse(map['trialStartDate'] as String)
+          : null,
+      isPremium: (map['isPremium'] as int? ?? 0) == 1,
     );
   }
 
-  /// Permite criar uma nova cópia do objeto User alterando apenas alguns campos.
   User copyWith({
     int? id,
     String? name,
@@ -53,6 +76,8 @@ class User {
     String? cpf,
     String? email,
     String? password,
+    DateTime? trialStartDate,
+    bool? isPremium,
   }) {
     return User(
       id: id ?? this.id,
@@ -62,6 +87,8 @@ class User {
       cpf: cpf ?? this.cpf,
       email: email ?? this.email,
       password: password ?? this.password,
+      trialStartDate: trialStartDate ?? this.trialStartDate,
+      isPremium: isPremium ?? this.isPremium,
     );
   }
 }
