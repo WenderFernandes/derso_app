@@ -9,7 +9,13 @@ import '../widgets/gradient_header.dart';
 
 class ServiceFormPage extends StatefulWidget {
   final Service? existingService;
-  const ServiceFormPage({Key? key, this.existingService}) : super(key: key);
+  final DateTime? preselectedDate; // ✅ novo parâmetro opcional
+
+  const ServiceFormPage({
+    Key? key,
+    this.existingService,
+    this.preselectedDate,
+  }) : super(key: key);
 
   @override
   State<ServiceFormPage> createState() => _ServiceFormPageState();
@@ -23,13 +29,17 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
   TimeOfDay _endTime = const TimeOfDay(hour: 12, minute: 0);
   bool _realized = false;
   DateTime? _paymentDate;
-  NotificationPreference _notificationPreference = NotificationPreference.oneHourBefore;
+  NotificationPreference _notificationPreference =
+      NotificationPreference.oneHourBefore;
 
   @override
   void initState() {
     super.initState();
+
     final service = widget.existingService;
+
     if (service != null) {
+      // 🔹 Edição de serviço existente
       _selectedDate = service.date;
       _startTime = _parseTime(service.startTime);
       _endTime = _parseTime(service.endTime);
@@ -38,6 +48,8 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
       _valueController.text = service.value.toStringAsFixed(2);
       _notificationPreference = service.notificationPreference;
     } else {
+      // 🔹 Novo serviço
+      _selectedDate = widget.preselectedDate ?? DateTime.now(); // ✅ usa a data pré-selecionada
       _valueController.text = '289.25';
     }
   }
@@ -51,6 +63,7 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
   @override
   Widget build(BuildContext context) {
     final userProvider = context.read<UserProvider>();
+
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.existingService == null
@@ -65,10 +78,8 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'Data do serviço',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
+                Text('Data do serviço',
+                    style: Theme.of(context).textTheme.titleMedium),
                 const SizedBox(height: 8),
                 InkWell(
                   onTap: () async {
@@ -102,10 +113,8 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
                   ),
                 ),
                 const SizedBox(height: 16),
-                Text(
-                  'Horário inicial',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
+                Text('Horário inicial',
+                    style: Theme.of(context).textTheme.titleMedium),
                 const SizedBox(height: 8),
                 InkWell(
                   onTap: () async {
@@ -130,10 +139,8 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
                   child: _buildTimeField(_startTime),
                 ),
                 const SizedBox(height: 16),
-                Text(
-                  'Horário final',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
+                Text('Horário final',
+                    style: Theme.of(context).textTheme.titleMedium),
                 const SizedBox(height: 8),
                 InkWell(
                   onTap: () async {
@@ -150,16 +157,16 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
                   child: _buildTimeField(_endTime),
                 ),
                 const SizedBox(height: 16),
-                Text(
-                  'Valor do serviço',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
+                Text('Valor do serviço',
+                    style: Theme.of(context).textTheme.titleMedium),
                 const SizedBox(height: 8),
                 TextFormField(
                   controller: _valueController,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
                   inputFormatters: [
-                    FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,2}')),
+                    FilteringTextInputFormatter.allow(
+                        RegExp(r'^\d+\.?\d{0,2}')),
                   ],
                   decoration: InputDecoration(
                     prefixText: 'R\$ ',
@@ -180,10 +187,8 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
                   },
                 ),
                 const SizedBox(height: 16),
-                Text(
-                  'Notificar',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
+                Text('Notificar',
+                    style: Theme.of(context).textTheme.titleMedium),
                 const SizedBox(height: 8),
                 DropdownButtonFormField<NotificationPreference>(
                   value: _notificationPreference,
@@ -191,7 +196,7 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    prefixIcon: Icon(Icons.notifications_active),
+                    prefixIcon: const Icon(Icons.notifications_active),
                   ),
                   items: NotificationPreference.values.map((pref) {
                     return DropdownMenuItem(

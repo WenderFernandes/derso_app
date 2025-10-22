@@ -26,72 +26,118 @@ class _CalendarPageState extends State<CalendarPage> {
     final serviceProvider = context.watch<ServiceProvider>();
     final events = _groupServicesByDate(serviceProvider.services);
     final theme = Theme.of(context);
-    return Column(
-      children: [
-        const GradientHeader(title: 'Calendário'),
-        Expanded(
-          child: SingleChildScrollView(
-            child: Column(
-              children: [
-                TableCalendar<Service>(
-                  firstDay: DateTime.utc(2024, 1, 1),
-                  lastDay: DateTime.utc(2030, 12, 31),
-                  focusedDay: _focusedDay,
-                  selectedDayPredicate: (day) {
-                    return isSameDay(_selectedDay, day);
-                  },
-                  calendarFormat: CalendarFormat.month,
-                  eventLoader: (day) {
-                    return events[DateTime(day.year, day.month, day.day)] ?? [];
-                  },
-                  onDaySelected: (selectedDay, focusedDay) {
-                    setState(() {
-                      _selectedDay = selectedDay;
-                      _focusedDay = focusedDay;
-                    });
-                  },
-                  onPageChanged: (focusedDay) {
-                    _focusedDay = focusedDay;
-                  },
-                  calendarStyle: CalendarStyle(
-                    markerDecoration: BoxDecoration(
-                      color: theme.colorScheme.primary,
-                      shape: BoxShape.circle,
-                    ),
-                    todayDecoration: BoxDecoration(
-                      color: theme.colorScheme.secondary,
-                      shape: BoxShape.circle,
-                    ),
-                    selectedDecoration: BoxDecoration(
-                      color: theme.colorScheme.primary,
-                      shape: BoxShape.circle,
+
+    return Scaffold(
+      floatingActionButton: _selectedDay != null
+          ? FloatingActionButton.extended(
+              onPressed: () async {
+                final newService = await Navigator.of(context).push<Service?>(
+                  MaterialPageRoute(
+                    builder: (_) => ServiceFormPage(
+                      preselectedDate: _selectedDay!, // 🔹 envia a data marcada
                     ),
                   ),
+                );
+
+                if (newService != null) {
+                  final serviceProvider = context.read<ServiceProvider>();
+                  final serviceId = await serviceProvider.addService(newService);
+
+                  // Notificação automática
+                  final notifService = NotificationService();
+                  final notifTime = _calculateNotificationTime(
+                    newService.date,
+                    newService.startTime,
+                    newService.notificationPreference,
+                  );
+
+                  if (notifTime.isAfter(DateTime.now())) {
+                    await notifService.scheduleNotification(
+                      id: serviceId,
+                      scheduledDate: tz.TZDateTime.from(notifTime, tz.local),
+                      title: 'Serviço DERSO',
+                      body:
+                          'Você possui um serviço ${newService.period} em ${DateFormat('dd/MM/yyyy').format(newService.date)} às ${newService.startTime}.',
+                    );
+                  }
+
+                  // Atualiza a lista do calendário
+                  setState(() {});
+                }
+              },
+              icon: const Icon(Icons.add),
+              label: Text(
+                'Adicionar Serviço',
+                style: TextStyle(
+                  color: theme.colorScheme.onPrimary,
+                  fontWeight: FontWeight.bold,
                 ),
-                const SizedBox(height: 12),
-                _buildEventList(events, serviceProvider.services),
-              ],
+              ),
+            )
+          : null,
+      body: Column(
+        children: [
+          const GradientHeader(title: 'Calendário'),
+          Expanded(
+            child: SingleChildScrollView(
+              child: Column(
+                children: [
+                  TableCalendar<Service>(
+                    firstDay: DateTime.utc(2024, 1, 1),
+                    lastDay: DateTime.utc(2030, 12, 31),
+                    focusedDay: _focusedDay,
+                    selectedDayPredicate: (day) => isSameDay(_selectedDay, day),
+                    calendarFormat: CalendarFormat.month,
+                    eventLoader: (day) =>
+                        events[DateTime(day.year, day.month, day.day)] ?? [],
+                    onDaySelected: (selectedDay, focusedDay) {
+                      setState(() {
+                        _selectedDay = selectedDay;
+                        _focusedDay = focusedDay;
+                      });
+                    },
+                    onPageChanged: (focusedDay) {
+                      _focusedDay = focusedDay;
+                    },
+                    calendarStyle: CalendarStyle(
+                      markerDecoration: BoxDecoration(
+                        color: theme.colorScheme.primary,
+                        shape: BoxShape.circle,
+                      ),
+                      todayDecoration: BoxDecoration(
+                        color: theme.colorScheme.secondary,
+                        shape: BoxShape.circle,
+                      ),
+                      selectedDecoration: BoxDecoration(
+                        color: theme.colorScheme.primary,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  _buildEventList(events, serviceProvider.services),
+                ],
+              ),
             ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
   Map<DateTime, List<Service>> _groupServicesByDate(List<Service> services) {
     final Map<DateTime, List<Service>> data = {};
     for (final service in services) {
-      final date = DateTime(service.date.year, service.date.month, service.date.day);
+      final date =
+          DateTime(service.date.year, service.date.month, service.date.day);
       data.putIfAbsent(date, () => []);
       data[date]!.add(service);
     }
     return data;
   }
 
-  Widget _buildEventList(Map<DateTime, List<Service>> events, List<Service> allServices) {
-    List<Service> filteredServices = [];
-    String title = '';
-
+  Widget _buildEventList(
+      Map<DateTime, List<Service>> events, List<Service> allServices) {
     if (_selectedDay == null) {
       return Container(
         padding: const EdgeInsets.all(12),
@@ -102,10 +148,13 @@ class _CalendarPageState extends State<CalendarPage> {
       );
     }
 
-    filteredServices = events[DateTime(_selectedDay!.year, _selectedDay!.month, _selectedDay!.day)] ?? [];
-    title = 'Serviços em ${DateFormat('dd/MM/yyyy').format(_selectedDay!)}';
-
+    final filteredServices =
+        events[DateTime(_selectedDay!.year, _selectedDay!.month, _selectedDay!.day)] ??
+            [];
     final theme = Theme.of(context);
+    final title =
+        'Serviços em ${DateFormat('dd/MM/yyyy').format(_selectedDay!)}';
+
     return Padding(
       padding: const EdgeInsets.all(16.0),
       child: Column(
@@ -114,19 +163,35 @@ class _CalendarPageState extends State<CalendarPage> {
           Text(title, style: theme.textTheme.titleMedium),
           const SizedBox(height: 8),
           if (filteredServices.isEmpty)
-            Text(
-              'Nenhum serviço para este dia.',
-              style: theme.textTheme.bodyMedium,
-            )
+            Text('Nenhum serviço para este dia.',
+                style: theme.textTheme.bodyMedium)
           else
             Column(
               children: filteredServices
                   .map((service) => _CalendarEventTile(service: service))
                   .toList(),
             ),
+          const SizedBox(height: 80), // espaço pro botão flutuante
         ],
       ),
     );
+  }
+
+  DateTime _calculateNotificationTime(
+      DateTime serviceDate, String startTime, NotificationPreference preference) {
+    final timeParts = startTime.split(':');
+    final serviceDateTime = DateTime(
+      serviceDate.year,
+      serviceDate.month,
+      serviceDate.day,
+      int.parse(timeParts[0]),
+      int.parse(timeParts[1]),
+    );
+
+    if (preference == NotificationPreference.sameDay) {
+      return DateTime(serviceDate.year, serviceDate.month, serviceDate.day, 8, 0);
+    }
+    return serviceDateTime.subtract(preference.duration);
   }
 }
 
@@ -138,7 +203,7 @@ class _CalendarEventTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final serviceProvider = context.read<ServiceProvider>();
-    
+
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 4),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -172,10 +237,12 @@ class _CalendarEventTile extends StatelessWidget {
                 ),
                 if (!service.received)
                   PopupMenuButton<String>(
-                    onSelected: (value) => _handleMenuAction(context, value, service),
+                    onSelected: (value) =>
+                        _handleMenuAction(context, value, service),
                     itemBuilder: (context) => [
                       const PopupMenuItem(value: 'edit', child: Text('Editar')),
-                      const PopupMenuItem(value: 'delete', child: Text('Excluir')),
+                      const PopupMenuItem(
+                          value: 'delete', child: Text('Excluir')),
                     ],
                   ),
               ],
@@ -184,8 +251,8 @@ class _CalendarEventTile extends StatelessWidget {
             Row(
               children: [
                 Expanded(
-                  child: Text('Realizado', style: theme.textTheme.bodySmall),
-                ),
+                    child:
+                        Text('Realizado', style: theme.textTheme.bodySmall)),
                 Switch(
                   value: service.realized,
                   onChanged: service.received
@@ -197,12 +264,13 @@ class _CalendarEventTile extends StatelessWidget {
             Row(
               children: [
                 Expanded(
-                  child: Text('Recebido', style: theme.textTheme.bodySmall),
-                ),
+                    child:
+                        Text('Recebido', style: theme.textTheme.bodySmall)),
                 Switch(
                   value: service.received,
                   onChanged: service.realized
-                      ? (value) => _handleReceivedToggle(context, service, value)
+                      ? (value) =>
+                          _handleReceivedToggle(context, service, value)
                       : null,
                 ),
               ],
@@ -224,7 +292,8 @@ class _CalendarEventTile extends StatelessWidget {
     );
   }
 
-  void _handleMenuAction(BuildContext context, String action, Service service) async {
+  void _handleMenuAction(
+      BuildContext context, String action, Service service) async {
     final serviceProvider = context.read<ServiceProvider>();
     final notifService = NotificationService();
 
@@ -238,22 +307,23 @@ class _CalendarEventTile extends StatelessWidget {
       if (updated != null) {
         await serviceProvider.updateService(updated);
         await notifService.cancelNotification(service.id!);
-        
+
         final notifTime = _calculateNotificationTime(
           updated.date,
           updated.startTime,
           updated.notificationPreference,
         );
-        
+
         if (notifTime.isAfter(DateTime.now())) {
           await notifService.scheduleNotification(
             id: updated.id!,
             scheduledDate: tz.TZDateTime.from(notifTime, tz.local),
             title: 'Serviço DERSO',
-            body: 'Você possui um serviço ${updated.period} em ${DateFormat('dd/MM/yyyy').format(updated.date)} às ${updated.startTime}.',
+            body:
+                'Você possui um serviço ${updated.period} em ${DateFormat('dd/MM/yyyy').format(updated.date)} às ${updated.startTime}.',
           );
         }
-        
+
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Serviço atualizado com sucesso')),
@@ -291,7 +361,9 @@ class _CalendarEventTile extends StatelessWidget {
         } else {
           if (context.mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Não é possível excluir serviço já recebido')),
+              const SnackBar(
+                  content:
+                      Text('Não é possível excluir serviço já recebido')),
             );
           }
         }
@@ -299,7 +371,8 @@ class _CalendarEventTile extends StatelessWidget {
     }
   }
 
-  void _handleReceivedToggle(BuildContext context, Service service, bool value) async {
+  void _handleReceivedToggle(
+      BuildContext context, Service service, bool value) async {
     final serviceProvider = context.read<ServiceProvider>();
 
     if (value) {
@@ -311,11 +384,11 @@ class _CalendarEventTile extends StatelessWidget {
       );
 
       if (paymentDate != null) {
-        final success = await serviceProvider.markAsReceived(service, paymentDate);
+        final success =
+            await serviceProvider.markAsReceived(service, paymentDate);
         if (!success && context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Marque o serviço como realizado primeiro')),
-          );
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              content: Text('Marque o serviço como realizado primeiro')));
         }
       }
     } else {
@@ -324,10 +397,7 @@ class _CalendarEventTile extends StatelessWidget {
   }
 
   DateTime _calculateNotificationTime(
-    DateTime serviceDate,
-    String startTime,
-    NotificationPreference preference,
-  ) {
+      DateTime serviceDate, String startTime, NotificationPreference preference) {
     final timeParts = startTime.split(':');
     final serviceDateTime = DateTime(
       serviceDate.year,
@@ -338,15 +408,8 @@ class _CalendarEventTile extends StatelessWidget {
     );
 
     if (preference == NotificationPreference.sameDay) {
-      return DateTime(
-        serviceDate.year,
-        serviceDate.month,
-        serviceDate.day,
-        8,
-        0,
-      );
+      return DateTime(serviceDate.year, serviceDate.month, serviceDate.day, 8, 0);
     }
-
     return serviceDateTime.subtract(preference.duration);
   }
 }
