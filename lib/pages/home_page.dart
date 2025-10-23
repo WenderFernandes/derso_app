@@ -7,12 +7,14 @@ import '../models/service.dart';
 import '../providers/service_provider.dart';
 import '../providers/user_provider.dart';
 import '../providers/theme_provider.dart';
+import '../providers/subscription_provider.dart';
 import '../services/notification_service.dart';
 import '../widgets/gradient_header.dart';
 import 'calendar_page.dart';
 import 'dashboard_page.dart';
 import 'profile_page.dart';
 import 'service_form_page.dart';
+import 'subscription_page.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({Key? key}) : super(key: key);
@@ -27,98 +29,83 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
-    final userProvider = context.read<UserProvider>();
-    final serviceProvider = context.read<ServiceProvider>();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final user = context.read<UserProvider>().user;
       if (user != null) {
         context.read<ServiceProvider>().loadServices(user.id!);
-        _checkTrialStatus();
+        context.read<SubscriptionProvider>().init(user.id!);
+        _checkSubscriptionStatus();
       }
     });
   }
 
-  void _checkTrialStatus() {
-    final user = context.read<UserProvider>().user;
-    if (user != null && !user.isTrialActive && !user.isPremium) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _showTrialExpiredDialog();
-      });
-    } else if (user != null && !user.isPremium && user.remainingTrialDays <= 3) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _showTrialWarning(user.remainingTrialDays);
-      });
-    }
+  void _checkSubscriptionStatus() {
+    final subscriptionProvider = context.read<SubscriptionProvider>();
+    
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await subscriptionProvider.checkSubscriptionStatus();
+      
+      final subscription = subscriptionProvider.currentSubscription;
+      
+      // Se não tem assinatura ativa, mostrar tela de assinaturas
+      if (subscription == null || !subscription.isActive) {
+        if (mounted) {
+          _showSubscriptionRequired();
+        }
+      } 
+      // Se a assinatura está próxima de expirar (3 dias ou menos)
+      else if (subscription.remainingDays <= 3 && subscription.remainingDays > 0) {
+        if (mounted) {
+          _showSubscriptionWarning(subscription.remainingDays);
+        }
+      }
+    });
   }
 
-  void _showTrialExpiredDialog() {
+  void _showSubscriptionRequired() {
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (context) => AlertDialog(
-        title: const Text('Período de Teste Expirado'),
+        title: const Text('Assinatura Necessária'),
         content: const Text(
-          'Seu período de teste de 10 dias expirou. Para continuar usando o DERSO, ative a versão premium.',
+          'Para continuar usando o DERSO, você precisa de uma assinatura ativa. '
+          'Escolha um plano para desbloquear todos os recursos.',
         ),
         actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              context.read<UserProvider>().logout();
-            },
-            child: const Text('Sair'),
-          ),
           ElevatedButton(
             onPressed: () {
               Navigator.pop(context);
-              _showPremiumActivation();
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => const SubscriptionPage(),
+                ),
+              );
             },
-            child: const Text('Ativar Premium'),
+            child: const Text('Ver Planos'),
           ),
         ],
       ),
     );
   }
 
-  void _showTrialWarning(int remainingDays) {
+  void _showSubscriptionWarning(int remainingDays) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('Restam $remainingDays dias do seu período de teste'),
+        content: Text(
+          'Sua assinatura expira em $remainingDays ${remainingDays == 1 ? "dia" : "dias"}',
+        ),
         duration: const Duration(seconds: 5),
         action: SnackBarAction(
-          label: 'Ativar Premium',
-          onPressed: _showPremiumActivation,
+          label: 'Renovar',
+          onPressed: () {
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => const SubscriptionPage(),
+              ),
+            );
+          },
         ),
-      ),
-    );
-  }
-
-  void _showPremiumActivation() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Ativar Versão Premium'),
-        content: const Text(
-          'Entre em contato com o suporte para ativar sua versão premium.\n\nEmail: suporte@derso.com\nTelefone: (69) 9999-9999',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Fechar'),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              await context.read<UserProvider>().activatePremium();
-              if (context.mounted) {
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Premium ativado com sucesso!')),
-                );
-              }
-            },
-            child: const Text('Ativar (Demo)'),
-          ),
-        ],
       ),
     );
   }
@@ -128,25 +115,33 @@ class _HomePageState extends State<HomePage> {
     final serviceProvider = context.watch<ServiceProvider>();
     final userProvider = context.watch<UserProvider>();
     final themeProvider = context.watch<ThemeProvider>();
+    final subscriptionProvider = context.watch<SubscriptionProvider>();
 
     final firstName = userProvider.user?.name.split(' ').first ?? 'Usuário';
+    final subscription = subscriptionProvider.currentSubscription;
 
     return Scaffold(
       appBar: AppBar(
         title: Row(
           children: [
             const Text('DERSO'),
-            if (userProvider.user != null && !userProvider.user!.isPremium) ...[
+            if (subscription != null && subscription.isActive) ...[
               const SizedBox(width: 8),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                 decoration: BoxDecoration(
-                  color: Colors.orange,
+                  color: Colors.green,
                   borderRadius: BorderRadius.circular(4),
                 ),
-                child: Text(
-                  'Trial: ${userProvider.user!.remainingTrialDays}d',
-                  style: const TextStyle(fontSize: 10, color: Colors.white),
+                child: Row(
+                  children: [
+                    const Icon(Icons.check_circle, size: 12, color: Colors.white),
+                    const SizedBox(width: 4),
+                    Text(
+                      'Premium',
+                      style: const TextStyle(fontSize: 10, color: Colors.white),
+                    ),
+                  ],
                 ),
               ),
             ],

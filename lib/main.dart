@@ -6,22 +6,25 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'providers/user_provider.dart';
 import 'providers/service_provider.dart';
 import 'providers/theme_provider.dart';
+import 'providers/subscription_provider.dart';
 import 'services/notification_service.dart';
 import 'pages/login_page.dart';
 import 'pages/home_page.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  
   // Inicializa dados de fuso horário para agendamento correto de notificações.
   await initializeDateFormatting('pt_BR', null);
 
   // Inicializa o serviço de notificações antes de iniciar a aplicação.
   await NotificationService().init();
+  
   runApp(const DersoApp());
 }
 
 /// Widget raiz da aplicação. Define temas claro e escuro e fornece provedor
-/// para usuário, serviços e tema.
+/// para usuário, serviços, tema e assinaturas.
 class DersoApp extends StatelessWidget {
   const DersoApp({Key? key}) : super(key: key);
 
@@ -32,6 +35,7 @@ class DersoApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => UserProvider()),
         ChangeNotifierProvider(create: (_) => ServiceProvider()),
         ChangeNotifierProvider(create: (_) => ThemeProvider()),
+        ChangeNotifierProvider(create: (_) => SubscriptionProvider()),
       ],
       child: Consumer<ThemeProvider>(
         builder: (context, themeProvider, child) {
@@ -46,6 +50,11 @@ class DersoApp extends StatelessWidget {
                 if (userProvider.user == null) {
                   return const LoginPage();
                 } else {
+                  // Inicializa billing ao fazer login
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    final subscriptionProvider = context.read<SubscriptionProvider>();
+                    subscriptionProvider.init(userProvider.user!.id!);
+                  });
                   return const HomePage();
                 }
               },
